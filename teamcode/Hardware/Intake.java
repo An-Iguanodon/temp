@@ -39,6 +39,16 @@ public class Intake extends Mechanism {
         IRM.setPower(0);
     }
 
+    public void runIntake(boolean in, boolean out) {
+        if (in) {
+            setIntakePower(1);
+        } else if (out) {
+            setIntakePower(-1);
+        } else {
+            setIntakePower(0);
+        }
+    }
+
     public void setIntakePower(double power) {
         detectJam();
         setLeftPower(power);
@@ -46,17 +56,17 @@ public class Intake extends Mechanism {
     }
 
     private void setLeftPower(double power) {
-        if(jamLeft) power *= -1;
+        if (jamLeft && power != 0) power *= -1;
         ILM.setPower(power);
     }
 
     private void setRightPower(double power) {
-        if(jamRight) power *= -1;
+        if (jamRight && power != 0) power *= -1;
         IRM.setPower(power);
     }
 
     private void detectJam() {
-        int stallThreshold = 6100;
+        int stallThreshold = 4250;
         int jamThreshold = 100;
         double leftCurrent = ILM.getCurrentDraw(ExpansionHubEx.CurrentDrawUnits.MILLIAMPS);
         double rightCurrent = IRM.getCurrentDraw(ExpansionHubEx.CurrentDrawUnits.MILLIAMPS);
@@ -83,7 +93,7 @@ public class Intake extends Mechanism {
         opMode.telemetry.addData("ILM Pow", ILM.getPower());
         opMode.telemetry.addData("IRM Pow", IRM.getPower());
 
-        opMode.telemetry.addData("ILM Pos", ILM.getCurrentDraw(ExpansionHubEx.CurrentDrawUnits.MILLIAMPS));
-        opMode.telemetry.addData("IRM Pos", IRM.getCurrentDraw(ExpansionHubEx.CurrentDrawUnits.MILLIAMPS));
+        opMode.telemetry.addData("ILM Current Draw (mA)", ILM.getCurrentDraw(ExpansionHubEx.CurrentDrawUnits.MILLIAMPS));
+        opMode.telemetry.addData("IRM Current Draw (mA)", IRM.getCurrentDraw(ExpansionHubEx.CurrentDrawUnits.MILLIAMPS));
     }
 }

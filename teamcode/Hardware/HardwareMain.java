@@ -16,14 +16,14 @@ public class HardwareMain {
         drivetrain = new Drivetrain(opMode);
         intake = new Intake(opMode);
         lift = new Lift(opMode);
-        vision = new Vision(opMode);
+        //vision = new Vision(opMode);
     }
 
     public void init(HardwareMap hwMap) {
         drivetrain.init(hwMap);
         intake.init(hwMap);
         lift.init(hwMap);
-        vision.init(hwMap);
+        //vision.init(hwMap);
     }
 
 

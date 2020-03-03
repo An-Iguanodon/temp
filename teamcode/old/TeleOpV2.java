@@ -10,8 +10,8 @@ import com.qualcomm.robotcore.hardware.Servo;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
-import org.firstinspires.ftc.teamcode.HardwareInit;
 
+/*
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
@@ -27,7 +27,7 @@ import java.util.List;
                 x_past = false;
                 }
                 telemetry.addData("test", test);
-*/
+
 
 @TeleOp(name = "yeahhhhh", group = "TeleOp")
 public class TeleOpV2 extends OpMode {
@@ -386,5 +386,5 @@ public class TeleOpV2 extends OpMode {
         Gamepad 2:
 
 
-     */
-}
+
+}*/

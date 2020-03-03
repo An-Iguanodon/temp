@@ -11,11 +11,15 @@ import org.firstinspires.ftc.robotcore.external.navigation.AxesOrder;
 import org.firstinspires.ftc.robotcore.external.navigation.AxesReference;
 import org.firstinspires.ftc.robotcore.external.navigation.Orientation;
 
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+
 public class Drivetrain extends Mechanism {
 
     static final double COUNTS_PER_MOTOR_REV = 560;    // eg: TETRIX Motor Encoder
     static final double DRIVE_GEAR_REDUCTION = 1.0;     // This is < 1.0 if geared UP
-    static final double WHEEL_DIAMETER_INCHES = 4.0;     // For figuring circumference
+    static final double WHEEL_DIAMETER_INCHES = 4.0 * 1.0;     // For figuring circumference
     static final double COUNTS_PER_INCH = (COUNTS_PER_MOTOR_REV * DRIVE_GEAR_REDUCTION) /
             (WHEEL_DIAMETER_INCHES * 3.1415);
 
@@ -34,9 +38,11 @@ public class Drivetrain extends Mechanism {
     private BNO055IMU imu; // The IMU sensor object
     Orientation lastAngles = new Orientation(); // State used for updating telemetry
 
-    double globalAngle, power = 0.50;
+    PIDController pidRotate;
 
-    PIDController pidRotate, pidDrive;
+    double globalAngle, minPower = 0.05, power = 0.50;
+
+    boolean input_past = false;
 
     public Drivetrain() {
     }
@@ -85,37 +91,31 @@ public class Drivetrain extends Mechanism {
 
         imu = hwMap.get(BNO055IMU.class, "imu");
         imu.initialize(parameters);
-
-        pidRotate = new PIDController(0, 0, 0);
-
-        pidDrive = new PIDController(0, 0, 0);
-        pidDrive.setSetpoint(0);
-        pidDrive.setOutputRange(0, power);
-        pidDrive.enable();
     }
 
-    public void fieldCentricDrive(double x, double y, double gyro, double turn) {
+    public void fieldCentricDrive(double x, double y, double turn) {
         double vel = Math.hypot(x, y); //find the hypotenuse if the joystick was a unit circle
         double basetheta = Math.atan2(x, y); //find the inside angle of the triangle formed
-        double realtheta = basetheta - gyro; //subtract the angle heading to create field-relative movement
+        double realtheta = basetheta - getAngle(); //subtract the angle heading to create field-relative movement
         double vx = (vel * Math.sin(realtheta));
         double vy = (vel * Math.cos(realtheta));
         LFMP = vy + vx + turn;
         RFMP = vy - vx - turn;
         LBMP = vy - vx + turn;
         RBMP = vy + vx - turn;
+        setDrive();
     }
 
     public void robotCentricDrive(double x, double y, double turn) {
         double vel = Math.hypot(x, y); //find the hypotenuse if the joystick was a unit circle
-        double basetheta = Math.atan2(x, y); //find the inside angle of the triangle formed
-        double realtheta = basetheta;
-        double vx = (vel * Math.sin(realtheta));
-        double vy = (vel * Math.cos(realtheta));
+        double theta = Math.atan2(x, y); //find the inside angle of the triangle formed
+        double vx = (vel * Math.sin(theta));
+        double vy = (vel * Math.cos(theta));
         LFMP = vy + vx + turn;
         RFMP = vy - vx - turn;
         LBMP = vy - vx + turn;
         RBMP = vy + vx - turn;
+        setDrive();
     }
 
     public void arcadeDrive(double l, double r, double turn) {
@@ -123,6 +123,35 @@ public class Drivetrain extends Mechanism {
         RFMP = r - turn;
         LBMP = l - turn;
         RBMP = r + turn;
+        setDrive();
+    }
+
+    public void minPowerTest(boolean input) {
+        if (input && !input_past) {
+            LFMP += 0.005;
+            RFMP += 0.005;
+            LBMP += 0.005;
+            RBMP += 0.005;
+            input_past = true;
+        } else if (!input) {
+            input_past = false;
+        }
+        setDrive();
+    }
+
+    private void setDrive() {
+        List<Double> list = Arrays.asList(Math.abs(LFMP), Math.abs(RFMP), Math.abs(LBMP), Math.abs(RBMP));
+        double max = Collections.max(list);
+        if (max > 1) {
+            LFMP /= max;
+            RFMP /= max;
+            LBMP /= max;
+            RBMP /= max;
+        }
+        LFM.setPower(LFMP);
+        RFM.setPower(RFMP);
+        LBM.setPower(LBMP);
+        RBM.setPower(RBMP);
     }
 
     public void encoderInit() {
@@ -137,51 +166,70 @@ public class Drivetrain extends Mechanism {
         RBM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
     }
 
-    public double getEncoderPos(){
-        return LFM.getCurrentPosition();
-    }
+    public void encoderDrive(double speed, double inches, boolean strafe) {
+        int newLFTarget;
+        int newRFTarget;
+        int newLBTarget;
+        int newRBTarget;
+        int lFPos = LFM.getCurrentPosition();
+        int rFPos = RFM.getCurrentPosition();
+        int lBPos = LBM.getCurrentPosition();
+        int rBPos = RBM.getCurrentPosition();
 
-    public void driveToPos(int inches, double power) {
-        pidDrive.reset();
-        pidDrive.setSetpoint(getEncoderPos() + inchesToTicks(inches));
-        pidDrive.setInputRange(getEncoderPos(), pidDrive.getSetpoint());
-        pidDrive.setOutputRange(.05, power);
-        pidDrive.setTolerance(20);
-        pidDrive.enable();
-        if (inches < 0) {
-            while (getEncoderPos() == 0) {
-                LFM.setPower(power);
-                LBM.setPower(power);
-                RFM.setPower(power);
-                RBM.setPower(power);
-            }
-            do {
-                power = pidDrive.performPID(getAngle());
-                LFM.setPower(power);
-                LBM.setPower(power);
-                RFM.setPower(power);
-                RBM.setPower(power);
-            }
-            while (!pidDrive.onTarget());
-        } else
-            do {
-                power = pidDrive.performPID(getEncoderPos());
-                LFM.setPower(-power);
-                LBM.setPower(-power);
-                RFM.setPower(-power);
-                RBM.setPower(-power);
-            }
-            while (!pidDrive.onTarget());
+        if (strafe) {
+            newLFTarget = lFPos + (int) (inches * COUNTS_PER_INCH);
+            newRFTarget = rFPos - (int) (inches * COUNTS_PER_INCH);
+            newLBTarget = lBPos - (int) (inches * COUNTS_PER_INCH);
+            newRBTarget = rBPos + (int) (inches * COUNTS_PER_INCH);
+        } else {
+            newLFTarget = lFPos + (int) (inches * COUNTS_PER_INCH);
+            newRFTarget = rFPos + (int) (inches * COUNTS_PER_INCH);
+            newLBTarget = lBPos + (int) (inches * COUNTS_PER_INCH);
+            newRBTarget = rBPos + (int) (inches * COUNTS_PER_INCH);
+        }
 
-        // turn the motors off.
+        LFM.setTargetPosition(newLFTarget);
+        RFM.setTargetPosition(newRFTarget);
+        LBM.setTargetPosition(newLBTarget);
+        RBM.setTargetPosition(newRBTarget);
+
+        LFM.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        RFM.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        LBM.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+        RBM.setMode(DcMotor.RunMode.RUN_TO_POSITION);
+
+        LFM.setPower(Math.abs(speed));
+        RFM.setPower(Math.abs(speed));
+        LBM.setPower(Math.abs(speed));
+        RBM.setPower(Math.abs(speed));
+
+        resetAngle();
+            while (LFM.isBusy() && RFM.isBusy() && LBM.isBusy() && RBM.isBusy() && !strafe) {
+                double error = 1.305 * getDeltaAngle();
+                if (error > 0) {
+                    LFM.setPower(speed - error);
+                    RFM.setPower(speed + error);
+                    LBM.setPower(speed - error);
+                    RBM.setPower(speed + error);
+                } else if (error < 0) {
+                    LFM.setPower(speed + error);
+                    RFM.setPower(speed - error);
+                    LBM.setPower(speed + error);
+                    RBM.setPower(speed - error);
+                }
+            }
+
         LFM.setPower(0);
-        LBM.setPower(0);
         RFM.setPower(0);
+        LBM.setPower(0);
         RBM.setPower(0);
-    }
 
-    private double inchesToTicks(int inches) {
-        return inches*COUNTS_PER_INCH;
+        LFM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        RFM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        LBM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        RBM.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+
+        delay(50);
     }
 
     public void resetAngle() {
@@ -190,7 +238,7 @@ public class Drivetrain extends Mechanism {
         globalAngle = 0;
     }
 
-    public double getAngle() {
+    private double getAngle() {
         Orientation angles = imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
 
         double deltaAngle = angles.firstAngle - lastAngles.firstAngle;
@@ -207,38 +255,43 @@ public class Drivetrain extends Mechanism {
         return globalAngle;
     }
 
+    private double getDeltaAngle() {
+        Orientation angles = imu.getAngularOrientation(AxesReference.INTRINSIC, AxesOrder.ZYX, AngleUnit.DEGREES);
+
+        double deltaAngle = angles.firstAngle - lastAngles.firstAngle;
+
+        lastAngles = angles;
+
+        return deltaAngle;
+    }
+
     public void turn(int degrees, double power) {
         // restart imu angle tracking.
         resetAngle();
         pidRotate.reset();
-        pidRotate.setContinuous();
         pidRotate.setSetpoint(getAngle() + degrees);
         pidRotate.setInputRange(-180, 180);
-        pidRotate.setOutputRange(.05, power);
-        pidRotate.setTolerance(0.5);
+        pidRotate.setOutputRange(minPower, power);
+        pidRotate.setTolerance(1);
         pidRotate.enable();
-        if (degrees < 0) {
-            while (getAngle() == 0) {
-                LFM.setPower(-power);
-                LBM.setPower(-power);
-                RFM.setPower(power);
-                RBM.setPower(power);
-            }
+        if (degrees > 0) {
             do {
                 power = pidRotate.performPID(getAngle()); // power will be - on right turn.
                 LFM.setPower(power);
                 LBM.setPower(power);
                 RFM.setPower(-power);
                 RBM.setPower(-power);
+                sendTelemetry();
             }
             while (!pidRotate.onTarget());
         } else    // left turn.
             do {
                 power = pidRotate.performPID(getAngle()); // power will be + on left turn.
-                LFM.setPower(power);
-                LBM.setPower(power);
-                RFM.setPower(-power);
-                RBM.setPower(-power);
+                LFM.setPower(-power);
+                LBM.setPower(-power);
+                RFM.setPower(power);
+                RBM.setPower(power);
+                sendTelemetry();
             }
             while (!pidRotate.onTarget());
 
@@ -250,21 +303,13 @@ public class Drivetrain extends Mechanism {
         resetAngle();
     }
 
-    /*
-    PT = P0 + V0T + 1/2A0T2 + 1/6JT3
-    VT = V0 + A0T + 1/2 JT2
-    AT = A0 + JT
-
-    Discrete time form:
-
-    PT = PT + VT +1/2AT + 1/6J
-    VT = VT+AT + 1/2JT
-    AT = AT+JT
-    where
-    P0, V0, and A0 are the starting position, velocity, and accelerations
-    PT , VT, and AT are the position, velocity, and acceleration at time T
-    J is the profile jerk (time rate of change of acceleration)
-    */
+    private void delay(int mS) {
+        try {
+            Thread.sleep(mS);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+    }
 
     public void sendTelemetry() {
         opMode.telemetry.addData("LBM Pow", LBM.getPower());
@@ -272,11 +317,16 @@ public class Drivetrain extends Mechanism {
         opMode.telemetry.addData("RBM Pow", RBM.getPower());
         opMode.telemetry.addData("RFM Pow", RFM.getPower());
 
+        /*
         opMode.telemetry.addData("LBM Pos", LBM.getCurrentPosition());
         opMode.telemetry.addData("LFM Pos", LFM.getCurrentPosition());
         opMode.telemetry.addData("RBM Pos", RBM.getCurrentPosition());
         opMode.telemetry.addData("RFM Pos", RFM.getCurrentPosition());
 
         opMode.telemetry.addData("Global Angle", globalAngle);
+        opMode.telemetry.addData("Heading", lastAngles.firstAngle);
+         */
+
+
     }
 }
